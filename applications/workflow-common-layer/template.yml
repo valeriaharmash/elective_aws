@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Common layer for use in different workflows
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: workflow-common-layer
+    Author: ''
+    Description: Layer with common dependencies for mycloudhub
+    Labels: ['layer', 'mycloudhub']
+    SemanticVersion: 6.0.5
+
+Globals:
+  Function:
+    Runtime: python3.11
+    MemorySize: 128
+    Timeout: 100
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mycloudhub
+    Description: Name of the project
+  StackName:
+    Type: String
+    Description: Name of the stack
+  ExecEnv:
+    Type: String
+    Description: Execution environment
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+Resources:
+  WorkflowCommonLambdaLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub '${ProjectName}-${StackName}-common-layer-${ExecEnv}'
+      Description: Common dependencies
+      ContentUri: ../../layers/common_layer/src/
+      CompatibleRuntimes:
+        - python3.11
+      LicenseInfo: 'MIT'
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: python3.11
+
+Outputs:
+  LambdaLayerArn:
+    Description: Common lambda layer arn
+    Value: !Ref WorkflowCommonLambdaLayer
+    Export:
+      Name: !Sub '${ProjectName}-${StackName}-common-layer-arn-${ExecEnv}'

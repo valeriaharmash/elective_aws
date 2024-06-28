@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  SAM Template for setup
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mycloudhub
+    Description: Name of the project
+  ExecEnv:
+    Type: String
+    Description: Execution environment
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  RegionName:
+    Type: String
+    Default: us-east-1
+    AllowedValues:
+      - us-east-1
+      - us-east-2
+      - us-west-1
+      - eu-central-1
+      - eu-west-1
+      - eu-west-2
+    Description: Region to deploy
+  RegionShortcut:
+    Type: String
+    Default: use1
+    AllowedValues:
+      - use1
+      - use2
+      - usw1
+      - euc1
+      - euw1
+      - euw2
+    Description: Region shortcut to deploy
+
+Resources:
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketName: !Sub '${ProjectName}-${RegionShortcut}-${ExecEnv}-configs'
+
+  S3BucketPolicyForSAM:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Resource: !Join
+              - ''
+              - - 'arn:aws:s3:::'
+                - !Ref S3Bucket
+                - /*
+            Principal:
+              Service: 'serverlessrepo.amazonaws.com'
+
+Outputs:
+  S3BucketName:
+    Description: bucket name for all configs
+    Value: !Ref S3Bucket
+    Export:
+      Name: !Sub '${ProjectName}-setup-bucket'
+  S3BucketHttp:
+    Description: http s3 location for all configs
+    Value: !Sub 'https://s3.amazonaws.com/${S3Bucket}'
+    Export:
+      Name: !Sub '${ProjectName}-setup-s3http'
+  S3Bucket:
+    Description: s3 location for all configs
+    Value: !Sub 's3://${S3Bucket}'
+    Export:
+      Name: !Sub '${ProjectName}-setup-s3'
