@@ -6,7 +6,7 @@ Description: >
 Parameters:
   ProjectName:
     Type: String
-    Default: mycloudhub
+    Default: cloud-works
     Description: Name of the project
   ExecEnv:
     Type: String
@@ -76,14 +76,14 @@ Outputs:
     Description: bucket name for all configs
     Value: !Ref S3Bucket
     Export:
-      Name: !Sub '${ProjectName}-setup-bucket'
+      Name: !Sub '${ProjectName}-configs-bucket'
   S3BucketHttp:
     Description: http s3 location for all configs
     Value: !Sub 'https://s3.amazonaws.com/${S3Bucket}'
     Export:
-      Name: !Sub '${ProjectName}-setup-s3http'
+      Name: !Sub '${ProjectName}-configs-s3http'
   S3Bucket:
     Description: s3 location for all configs
     Value: !Sub 's3://${S3Bucket}'
     Export:
-      Name: !Sub '${ProjectName}-setup-s3'
+      Name: !Sub '${ProjectName}-configs-s3'
