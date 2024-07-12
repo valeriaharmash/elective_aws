@@ -4,7 +4,7 @@ from aws_lambda_powertools import Logger
 from common_services.sns_service import SnsService
 from config import MSG_TOPIC_ARN_CREDENTIALS
 
-logger = Logger('send-messages-app')
+logger = Logger('publish-messages-app')
 
 
 @logger.inject_lambda_context

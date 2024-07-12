@@ -4,8 +4,8 @@ from sqlalchemy.sql import func
 from db_core import Base
 
 
-class QueueMessage(Base):
-    __tablename__ = 'queue_messages'
+class NotificationMessage(Base):
+    __tablename__ = 'notification_messages'
     __table_args__ = {'schema': 'public'}
 
     id = Column(Integer, primary_key=True)

@@ -1,18 +1,28 @@
 import boto3
 from aws_lambda_powertools import Logger
-from config import MSG_QUEUE_URL, MSG_DB_CREDENTIALS
+from config import MSG_DB_CREDENTIALS, NOTIFICATIONS_QUEUE_URL, CRITICAL_ALERTS_QUEUE_URL
 from db_core import create_db_session
 from repository.queue_messages_repository import PostgresMessagesRepository
+from common_services.sqs_service import SqsService
+from models.messages_processing.notification_messages import NotificationMessage
+from models.messages_processing.critical_alerts import CriticalAlert
+
 logger = Logger('run-process-messages-view')
 
 
 class MessageProcessor:
     def __init__(self):
-        self.region_name = 'us-east-1'
-        self.sqs_client = boto3.client('sqs', region_name=self.region_name)
-        self.queue_url = MSG_QUEUE_URL
+        self.sqs_service = SqsService()
         self.repo = None
         self.db_session = None
+        self.models_dict = {
+            "notifications": NotificationMessage,
+            "critical_alerts": CriticalAlert
+        }
+        self.queue_urls_dict = {
+            "notifications": NOTIFICATIONS_QUEUE_URL,
+            "critical_alerts": CRITICAL_ALERTS_QUEUE_URL
+        }
 
     def initialize_repo(self) -> None:
         if self.repo is None:
@@ -27,19 +37,29 @@ class MessageProcessor:
                 logger.exception(f'Failed to create db session, reason: {e}')
                 raise e
 
-    def read_messages(self):
-        response = self.sqs_client.receive_message(
-            QueueUrl=self.queue_url,
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=20
-        )
+    def process_messages(self, message_type: str, num_messages: int) -> None:
+        try:
+            logger.info(f'Retrieving messages of type "{message_type}" from queue...')
 
-        messages = response.get('Messages', [])
+            queue_url = self.queue_urls_dict[message_type]
+
+            messages = self.sqs_service.read_sqs_messages(queue_url=queue_url, num_messages=num_messages)
+
+            logger.info(f'Successfully retrieved {len(messages)} messages from queue.')
+        except Exception as e:
+            logger.info(f'Error retrieving messages from "{message_type}" queue, reason: {e}')
+            raise e
 
         try:
             self.initialize_repo()
 
-            self.repo.ingest_message(messages)
+            logger.info(f'Ingesting {num_messages} into db...')
+
+            model = self.models_dict[message_type]
+
+            self.repo.ingest_messages(messages=messages, model=model)
+
+            logger.info(f'Successfully ingested messages into {model}.')
         except Exception as e:
             logger.info(f'Error ingesting message, reason: {e}')
             raise e

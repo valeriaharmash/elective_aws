@@ -6,7 +6,8 @@ from common_schemas.credentials_schema import DbCredential
 
 logger = Logger('generate-process-messages-config')
 
-MSG_QUEUE_URL = os.getenv('MSG_QUEUE_URL')
+CRITICAL_ALERTS_QUEUE_URL = os.getenv('CRITICAL_ALERTS_QUEUE_URL')
+NOTIFICATIONS_QUEUE_URL = os.getenv('NOTIFICATIONS_QUEUE_URL')
 
 if os.getenv('ENVIRONMENT') == 'local':
 
