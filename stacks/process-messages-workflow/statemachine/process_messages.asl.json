@@ -1,0 +1,54 @@
+{
+  "Comment": "Process Messages Workflow",
+  "StartAt": "PublishMessages",
+  "States": {
+    "PublishMessages": {
+      "Type": "Task",
+      "Resource": "${PublishMessagesFunctionArn}",
+      "Next": "WaitForNotifications"
+    },
+    "WaitForNotifications": {
+      "Type": "Wait",
+      "Seconds": 10,
+      "Next": "ProcessNotifications"
+    },
+    "ProcessNotifications": {
+      "Type": "Parallel",
+      "Branches": [
+        {
+          "StartAt": "ProcessNotificationMessages",
+          "States": {
+            "ProcessNotificationMessages": {
+              "Type": "Task",
+              "Resource": "${ProcessMessagesFunctionArn}",
+              "Parameters": {
+                "QueueUrl.$": "$$.Execution.Input.NOTIFICATIONS_QUEUE_URL",
+                "MessageType": "notification"
+              },
+              "End": true
+            }
+          }
+        },
+        {
+          "StartAt": "ProcessCriticalAlertMessages",
+          "States": {
+            "ProcessCriticalAlertMessages": {
+              "Type": "Task",
+              "Resource": "${ProcessMessagesFunctionArn}",
+              "Parameters": {
+                "QueueUrl.$": "$$.Execution.Input.CRITICAL_ALERTS_QUEUE_URL",
+                "MessageType": "critical_alert"
+              },
+              "End": true
+            }
+          }
+        }
+      ],
+      "Next": "ProcessCompleted"
+    },
+    "ProcessCompleted": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

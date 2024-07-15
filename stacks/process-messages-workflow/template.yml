@@ -1,0 +1,173 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Workflow for Processing SNS Messages
+
+Globals:
+  Function:
+    Runtime: python3.11
+    MemorySize: 512
+    Timeout: 120
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: cloud-works
+    Description: Name of the project
+  StackName:
+    Type: String
+    Description: Name of the stack
+  ExecEnv:
+    Type: String
+    Description: Execution environment
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+  RegionName:
+    Type: String
+    Default: us-east-1
+
+Mappings:
+  Layers:
+    cloud-works-common-layer:
+      ApplicationId: 'arn:aws:serverlessrepo:${AWS::Region}:${AWS::AccountId}:applications/workflow-common-layer'
+    cloud-works-pg-layer:
+      ApplicationId: 'arn:aws:serverlessrepo:${AWS::Region}:${AWS::AccountId}:applications/workflow-pg-layer'
+
+Resources:
+
+  #  Layers with dependencies
+  CommonLayer:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: !FindInMap [ Layers, cloud-works-common-layer, ApplicationId ]
+        SemanticVersion: '1.0.3'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        StackName: !Ref StackName
+        ExecEnv: !Ref ExecEnv
+
+  PgLayer:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location:
+        ApplicationId: !FindInMap [ Layers, cloud-works-pg-layer, ApplicationId ]
+        SemanticVersion: '1.0.0'
+      Parameters:
+        ProjectName: !Ref ProjectName
+        StackName: !Ref StackName
+        ExecEnv: !Ref ExecEnv
+
+ # IAM Role for Lambda Function (inline policy)
+  ProcessMessagesFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${ProjectName}-${StackName}-lambda-policy-${ExecEnv}'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sqs:ReceiveMessage'
+                  - 'sqs:DeleteMessage'
+                  - 'sqs:GetQueueAttributes'
+                Resource:
+                  - !GetAtt NotificationQueue.Arn
+                  - !GetAtt CriticalAlertQueue.Arn
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-db-credentials-${ExecEnv}-*'
+
+  # SNS Topic
+  SnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: 'message-process-topic'
+
+  # SQS Queues
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: 'Notifications'
+      VisibilityTimeout: 120
+
+  CriticalAlertQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: 'CriticalAlerts'
+      VisibilityTimeout: 120
+
+  # Lambda for publishing messages on SNS
+  PublishMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${StackName}-publish-messages-${ExecEnv}'
+      Layers:
+        - !GetAtt CommonLayer.Outputs.LambdaLayerArn
+      CodeUri: lambdas/fPublishMessages/src/
+      Handler: app.lambda_handler
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-topic-arn-${ExecEnv}-*'
+      Environment:
+        Variables:
+          MSG_TOPIC_ARN_SECRET_NAME: !Sub 'msg-topic-arn-${ExecEnv}'
+
+
+  # Lambda for processing SQS Messages
+  ProcessMessagesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${StackName}-process-messages-${ExecEnv}'
+      Layers:
+        - !GetAtt CommonLayer.Outputs.LambdaLayerArn
+        - !GetAtt PgLayer.Outputs.LambdaLayerArn
+      CodeUri: lambdas/fProcessMessages/src/
+      Handler: app.lambda_handler
+      Role: !GetAtt ProcessMessagesFunctionRole.Arn
+      Environment:
+        Variables:
+          MSG_DB_SECRET_NAME: !Sub 'msg-db-credentials-${ExecEnv}'
+          NOTIFICATIONS_QUEUE_URL: NotificationQueue.Arn
+          CRITICAL_ALERTS_QUEUE_URL: CriticalAlertQueue.Arn
+
+  # Event source mapping for SQS queues
+  NotificationQueueEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      EventSourceArn: !GetAtt NotificationQueue.Arn
+      FunctionName: !GetAtt ProcessMessagesFunction.Arn
+
+  CriticalAlertQueueEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      EventSourceArn: !GetAtt CriticalAlertQueue.Arn
+      FunctionName: !GetAtt ProcessMessagesFunction.Arn
+
+  ProcessMessagesStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionSubstitutions:
+        PublishMessagesFunctionArn: !GetAtt PublishMessagesFunction.Arn
+        ProcessMessagesFunctionArn: !GetAtt ProcessMessagesFunction.Arn
+        NOTIFICATIONS_QUEUE_URL: NotificationQueue.Arn
+        CRITICAL_ALERTS_QUEUE_URL: CriticalAlertQueue.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref PublishMessagesFunction
+        - LambdaInvokePolicy:
+             FunctionName: !Ref ProcessMessagesFunction
+      DefinitionUri: stacks/process-messages-workflow/statemachine/process_messages.asl.json

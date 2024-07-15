@@ -5,11 +5,11 @@ Description: >
 
 Metadata:
   AWS::ServerlessRepo::Application:
-    Name: workflow-common-layer
+    Name: workflow-pg-layer
     Author: 'cloud-works'
-    Description: Layer with common dependencies for mycloudhub
-    Labels: ['layer', 'cloud-works']
-    SemanticVersion: 1.0.3
+    Description: Layer with postgres dependencies and models
+    Labels: [ 'layer', 'cloud-works' ]
+    SemanticVersion: 1.0.0
 
 Globals:
   Function:
@@ -20,7 +20,7 @@ Globals:
 Parameters:
   ProjectName:
     Type: String
-    Default: cloud-works
+    Default: 'cloud-works'
     Description: Name of the project
   StackName:
     Type: String
@@ -34,12 +34,13 @@ Parameters:
       - prod
 
 Resources:
-  WorkflowCommonLambdaLayer:
+
+  WorkflowPgLambdaLayer:
     Type: AWS::Serverless::LayerVersion
     Properties:
-      LayerName: !Sub '${ProjectName}-${StackName}-common-layer-${ExecEnv}'
+      LayerName: !Sub '${ProjectName}-${StackName}-pg-layer-${ExecEnv}'
       Description: Common dependencies
-      ContentUri: ../../layers/common_layer/src/
+      ContentUri: ../../layers/postgres_layer/src/
       CompatibleRuntimes:
         - python3.11
       LicenseInfo: 'MIT'
@@ -50,6 +51,6 @@ Resources:
 Outputs:
   LambdaLayerArn:
     Description: Common lambda layer arn
-    Value: !Ref WorkflowCommonLambdaLayer
+    Value: !Ref WorkflowPgLambdaLayer
     Export:
-      Name: !Sub '${ProjectName}-${StackName}-common-layer-arn-${ExecEnv}'
+      Name: !Sub "${ProjectName}-${StackName}-pg-layer-arn-${ExecEnv}"
