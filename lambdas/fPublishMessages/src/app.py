@@ -30,10 +30,10 @@ def lambda_handler(event, context: LambdaContext):
             )
         message = 'Messages published successfully.'
         logger.info(message)
-        return LambdaResponseBase(
-            status_code=200,
-            message=message
-        )
     except Exception as e:
         logger.exception(f'Failed to publish messages, reason: {e}')
         raise e
+    return LambdaResponseBase(
+        status_code=200,
+        message=message
+    ).model_dump()

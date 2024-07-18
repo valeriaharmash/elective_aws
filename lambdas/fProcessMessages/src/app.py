@@ -23,10 +23,10 @@ def lambda_handler(event: ProcessMessagesRequest, context: LambdaContext):
 
         message = 'Successfully processed messages.'
         logger.info(message)
-        return LambdaResponseBase(
-            status_code=200,
-            message=message
-        )
     except Exception as e:
         logger.exception(f'Failed to process messages, reason: {e}')
         raise e
+    return LambdaResponseBase(
+        status_code=200,
+        message=message
+    ).model_dump()

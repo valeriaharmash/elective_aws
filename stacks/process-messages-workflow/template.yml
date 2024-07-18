@@ -43,7 +43,7 @@ Resources:
     Properties:
       Location:
         ApplicationId: !FindInMap [ Layers, cloud-works-common-layer, ApplicationId ]
-        SemanticVersion: '1.0.3'
+        SemanticVersion: '1.0.4'
       Parameters:
         ProjectName: !Ref ProjectName
         StackName: !Ref StackName
@@ -59,6 +59,36 @@ Resources:
         ProjectName: !Ref ProjectName
         StackName: !Ref StackName
         ExecEnv: !Ref ExecEnv
+
+  PublishMessagesFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: "${AWS::AccountId}"
+      Description: 'Role definition for PublishMessagesFunction'
+      Policies:
+        - PolicyName: !Sub '${ProjectName}-${StackName}-pm-policy-${ExecEnv}'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'sns:Publish'
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:message-process-topic'
+              - Effect: Allow
+                Action:
+                  - 'secretsmanager:GetSecretValue'
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-topic-arn-${ExecEnv}-*'
 
  # IAM Role for Lambda Function (inline policy)
   ProcessMessagesFunctionRole:
@@ -117,9 +147,7 @@ Resources:
         - !GetAtt CommonLayer.Outputs.LambdaLayerArn
       CodeUri: lambdas/fPublishMessages/src/
       Handler: app.lambda_handler
-      Policies:
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-topic-arn-${ExecEnv}-*'
+      Role: !GetAtt PublishMessagesFunctionRole.Arn
       Environment:
         Variables:
           MSG_TOPIC_ARN_SECRET_NAME: !Sub 'msg-topic-arn-${ExecEnv}'

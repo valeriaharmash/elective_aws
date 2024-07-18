@@ -9,7 +9,7 @@ Metadata:
     Author: 'cloud-works'
     Description: Layer with common dependencies for mycloudhub
     Labels: ['layer', 'cloud-works']
-    SemanticVersion: 1.0.3
+    SemanticVersion: 1.0.4
 
 Globals:
   Function:
