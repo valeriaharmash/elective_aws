@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import Dict
 
 from aws_lambda_powertools.utilities.parser import BaseModel
 
