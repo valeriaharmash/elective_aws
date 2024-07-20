@@ -43,7 +43,7 @@ Resources:
     Properties:
       Location:
         ApplicationId: !FindInMap [ Layers, cloud-works-common-layer, ApplicationId ]
-        SemanticVersion: '1.0.4'
+        SemanticVersion: '1.0.7'
       Parameters:
         ProjectName: !Ref ProjectName
         StackName: !Ref StackName
@@ -60,6 +60,7 @@ Resources:
         StackName: !Ref StackName
         ExecEnv: !Ref ExecEnv
 
+  # IAM Role for PublishMessages Lambda
   PublishMessagesFunctionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -84,27 +85,34 @@ Resources:
               - Effect: Allow
                 Action:
                   - 'sns:Publish'
-                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:message-process-topic'
+                Resource: !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:process-messages-topic'
               - Effect: Allow
                 Action:
                   - 'secretsmanager:GetSecretValue'
                 Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-topic-arn-${ExecEnv}-*'
 
- # IAM Role for Lambda Function (inline policy)
+
+  # IAM Role for ProcessMessages Lambda
   ProcessMessagesFunctionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+            Condition:
+              StringEquals:
+                aws:SourceAccount: "${AWS::AccountId}"
+      Description: 'Role definition for ProcessMessagesFunction'
       Policies:
-        - PolicyName: !Sub '${ProjectName}-${StackName}-lambda-policy-${ExecEnv}'
+        - PolicyName: !Sub '${ProjectName}-${StackName}-pr-policy-${ExecEnv}'
           PolicyDocument:
-            Version: '2012-10-17'
+            Version: 2012-10-17
             Statement:
               - Effect: Allow
                 Action:
@@ -112,31 +120,12 @@ Resources:
                   - 'sqs:DeleteMessage'
                   - 'sqs:GetQueueAttributes'
                 Resource:
-                  - !GetAtt NotificationQueue.Arn
-                  - !GetAtt CriticalAlertQueue.Arn
+                  - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:alerts-queue'
+                  - !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:notifications-queue'
               - Effect: Allow
                 Action:
                   - 'secretsmanager:GetSecretValue'
                 Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:msg-db-credentials-${ExecEnv}-*'
-
-  # SNS Topic
-  SnsTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: 'message-process-topic'
-
-  # SQS Queues
-  NotificationQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: 'Notifications'
-      VisibilityTimeout: 120
-
-  CriticalAlertQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      QueueName: 'CriticalAlerts'
-      VisibilityTimeout: 120
 
   # Lambda for publishing messages on SNS
   PublishMessagesFunction:
@@ -152,7 +141,6 @@ Resources:
         Variables:
           MSG_TOPIC_ARN_SECRET_NAME: !Sub 'msg-topic-arn-${ExecEnv}'
 
-
   # Lambda for processing SQS Messages
   ProcessMessagesFunction:
     Type: AWS::Serverless::Function
@@ -167,23 +155,38 @@ Resources:
       Environment:
         Variables:
           MSG_DB_SECRET_NAME: !Sub 'msg-db-credentials-${ExecEnv}'
-          NOTIFICATIONS_QUEUE_URL: NotificationQueue.Arn
-          CRITICAL_ALERTS_QUEUE_URL: CriticalAlertQueue.Arn
 
-  # Event source mapping for SQS queues
-  NotificationQueueEventSource:
+  NotificationsEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 10
-      EventSourceArn: !GetAtt NotificationQueue.Arn
+      EventSourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:notifications-queue'
       FunctionName: !GetAtt ProcessMessagesFunction.Arn
+      Enabled: "true"
 
-  CriticalAlertQueueEventSource:
+  AllowNotificationsQToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProcessMessagesFunction
+      Principal: sqs.amazonaws.com
+      SourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:notifications-queue'
+
+  AlertsEventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping
     Properties:
       BatchSize: 10
-      EventSourceArn: !GetAtt CriticalAlertQueue.Arn
+      EventSourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:alerts-queue'
       FunctionName: !GetAtt ProcessMessagesFunction.Arn
+      Enabled: "true"
+
+  AllowAlertsQToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ProcessMessagesFunction
+      Principal: sqs.amazonaws.com
+      SourceArn: !Sub 'arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:alerts-queue'
 
   ProcessMessagesStateMachine:
     Type: AWS::Serverless::StateMachine
@@ -191,11 +194,9 @@ Resources:
       DefinitionSubstitutions:
         PublishMessagesFunctionArn: !GetAtt PublishMessagesFunction.Arn
         ProcessMessagesFunctionArn: !GetAtt ProcessMessagesFunction.Arn
-        NOTIFICATIONS_QUEUE_URL: NotificationQueue.Arn
-        CRITICAL_ALERTS_QUEUE_URL: CriticalAlertQueue.Arn
       Policies:
         - LambdaInvokePolicy:
             FunctionName: !Ref PublishMessagesFunction
         - LambdaInvokePolicy:
-             FunctionName: !Ref ProcessMessagesFunction
+            FunctionName: !Ref ProcessMessagesFunction
       DefinitionUri: stacks/process-messages-workflow/statemachine/process_messages.asl.json

@@ -5,14 +5,9 @@
     "PublishMessages": {
       "Type": "Task",
       "Resource": "${PublishMessagesFunctionArn}",
-      "Next": "WaitForNotifications"
+      "Next": "ProcessMessages"
     },
-    "WaitForNotifications": {
-      "Type": "Wait",
-      "Seconds": 10,
-      "Next": "ProcessNotifications"
-    },
-    "ProcessNotifications": {
+    "ProcessMessages": {
       "Type": "Parallel",
       "Branches": [
         {
@@ -22,33 +17,30 @@
               "Type": "Task",
               "Resource": "${ProcessMessagesFunctionArn}",
               "Parameters": {
-                "QueueUrl.$": "$$.Execution.Input.NOTIFICATIONS_QUEUE_URL",
-                "MessageType": "notification"
+                "QueueUrl": "${QueueUrl}",
+                "MessageBody.$": "$"
               },
               "End": true
             }
           }
         },
         {
-          "StartAt": "ProcessCriticalAlertMessages",
+          "StartAt": "ProcessAlertMessages",
           "States": {
-            "ProcessCriticalAlertMessages": {
+            "ProcessAlertMessages": {
               "Type": "Task",
               "Resource": "${ProcessMessagesFunctionArn}",
               "Parameters": {
-                "QueueUrl.$": "$$.Execution.Input.CRITICAL_ALERTS_QUEUE_URL",
-                "MessageType": "critical_alert"
+                "QueueUrl": "${QueueUrl}",
+                "MessageBody.$": "$"
               },
               "End": true
             }
           }
         }
       ],
-      "Next": "ProcessCompleted"
-    },
-    "ProcessCompleted": {
-      "Type": "Pass",
       "End": true
     }
   }
 }
+

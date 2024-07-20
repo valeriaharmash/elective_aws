@@ -3,7 +3,6 @@ from typing import List, Type
 
 from sqlalchemy.orm import scoped_session
 from db_core import Base
-from models.messages_processing.notification_messages import NotificationMessage
 
 
 class PostgresMessagesRepository:
@@ -25,13 +24,13 @@ class PostgresMessagesRepository:
                 try:
                     queue_messages = []
                     for msg in messages:
-                        body = json.loads(msg['Body'])
+
                         message_id = msg['MessageId']
-                        message_content = json.loads(body['Message'])['default']
+                        message_text = json.loads(msg['Body'])['Message']
 
                         queue_message = model(
                             message_id=message_id,
-                            message=message_content
+                            message=message_text
                         )
                         queue_messages.append(queue_message)
 

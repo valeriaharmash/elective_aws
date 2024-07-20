@@ -1,6 +1,5 @@
-import boto3
 from aws_lambda_powertools import Logger
-from config import MSG_DB_CREDENTIALS, NOTIFICATIONS_QUEUE_URL, CRITICAL_ALERTS_QUEUE_URL
+from config import MSG_DB_CREDENTIALS
 from db_core import create_db_session
 from repository.queue_messages_repository import PostgresMessagesRepository
 from common_services.sqs_service import SqsService
@@ -16,15 +15,17 @@ class MessageProcessor:
         self.repo = None
         self.db_session = None
         self.models_dict = {
-            "notifications": NotificationMessage,
-            "critical_alerts": CriticalAlert
-        }
-        self.queue_urls_dict = {
-            "notifications": NOTIFICATIONS_QUEUE_URL,
-            "critical_alerts": CRITICAL_ALERTS_QUEUE_URL
+            "notification": NotificationMessage,
+            "critical_alert": CriticalAlert
         }
 
     def initialize_repo(self) -> None:
+        """
+             Initialize the repository for processing messages. Creates a database session and
+             assigns a PostgresMessagesRepository instance to the 'repo' attribute.
+
+             If the repository is already initialized, it will do nothing.
+         """
         if self.repo is None:
             try:
                 logger.info('Creating db session...')
@@ -37,30 +38,42 @@ class MessageProcessor:
                 logger.exception(f'Failed to create db session, reason: {e}')
                 raise e
 
-    def process_messages(self, message_type: str, num_messages: int) -> None:
+    def process_messages(self,  queue_url: str, message_type: str) -> None:
+        """
+        Process messages from an SQS queue by retrieving, ingesting, and deleting them.
+
+        Parameters:
+            queue_url (str): The URL of the SQS queue to retrieve messages from.
+            message_type (str): The type of messages to process, used to select the appropriate model.
+        """
         try:
-            logger.info(f'Retrieving messages of type "{message_type}" from queue...')
+            logger.info(f'Retrieving messages from "{queue_url}"...')
 
-            queue_url = self.queue_urls_dict[message_type]
-
-            messages = self.sqs_service.read_sqs_messages(queue_url=queue_url, num_messages=num_messages)
+            messages = self.sqs_service.read_sqs_messages(queue_url=queue_url)
 
             logger.info(f'Successfully retrieved {len(messages)} messages from queue.')
         except Exception as e:
-            logger.info(f'Error retrieving messages from "{message_type}" queue, reason: {e}')
+            logger.info(f'Error retrieving messages from  queue, reason: {e}')
             raise e
 
         try:
             self.initialize_repo()
 
-            logger.info(f'Ingesting {num_messages} into db...')
+            logger.info(f'Ingesting {len(messages)} into db...')
 
             model = self.models_dict[message_type]
 
             self.repo.ingest_messages(messages=messages, model=model)
 
-            logger.info(f'Successfully ingested messages into {model}.')
+            logger.info(f'Successfully ingested messages into "{model}".')
         except Exception as e:
             logger.info(f'Error ingesting message, reason: {e}')
+            raise e
+
+        try:
+            self.sqs_service.delete_sqs_messages(messages=messages, queue_url=queue_url)
+            logger.info(f'Successfully deleted {len(messages)} from {queue_url}.')
+        except Exception as e:
+            logger.info(f'Error deleting messages from "{queue_url}", reason: {e}')
             raise e
 

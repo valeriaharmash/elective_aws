@@ -14,13 +14,10 @@ def lambda_handler(event: ProcessMessagesRequest, context: LambdaContext):
     try:
         message_processor = MessageProcessor()
 
-        for message_type_dict in event.messages_info:
-            for message_type in message_type_dict.keys():
-                message_processor.process_messages(
-                    message_type=message_type,
-                    num_messages=message_type_dict[message_type]
-                )
-
+        message_processor.process_messages(
+           queue_url=event.QueueUrl,
+           message_type=event.MessageType
+        )
         message = 'Successfully processed messages.'
         logger.info(message)
     except Exception as e:

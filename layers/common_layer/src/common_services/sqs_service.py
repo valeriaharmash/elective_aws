@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import boto3
 
@@ -8,7 +8,7 @@ class SqsService:
         self.region_name = region_name
         self.client = boto3.client('sqs', region_name=self.region_name)
 
-    def read_sqs_messages(self, queue_url: str, num_messages: int) -> List:
+    def read_sqs_messages(self, queue_url: str, num_messages: int = 10) -> List[Dict]:
         """
             Reads messages from an SQS queue.
 
@@ -26,3 +26,24 @@ class SqsService:
             WaitTimeSeconds=20
         )
         return response.get('Messages', [])
+
+    def delete_sqs_messages(self, queue_url: str, messages: List[Dict]) -> None:
+        """
+          Deletes messages from the specified SQS queue using the given receipt handles.
+
+          Parameters:
+             queue_url (str): The URL of the SQS queue from which the messages will be deleted.
+             messages (List[Dict]): A list of messages to be deleted, where each message is
+             represented as a dictionary containing the 'ReceiptHandle'.
+
+          Returns:
+          None
+          """
+        for msg in messages:
+
+            receipt_handle = msg['ReceiptHandle']
+
+            self.client.delete_message(
+                QueueUrl=queue_url,
+                ReceiptHandle=receipt_handle
+            )

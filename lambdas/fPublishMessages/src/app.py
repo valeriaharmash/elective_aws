@@ -9,6 +9,19 @@ logger = Logger('publish-messages-app')
 
 @logger.inject_lambda_context
 def lambda_handler(event, context: LambdaContext):
+    """
+        AWS Lambda handler function for publishing messages to an SNS topic.
+
+        Steps:
+            1. Creates an instance of `SnsService`.
+            2. Retrieves the topic ARN from `MSG_TOPIC_ARN_CREDENTIALS`.
+            3. Publishes a specified number of general notification messages and critical alert messages to the SNS
+                topic.
+            4. Logs the status of the publishing operations.
+
+        Returns:
+            LambdaResponseBase
+    """
     try:
         sns_service = SnsService()
         topic_arn = MSG_TOPIC_ARN_CREDENTIALS.arn
